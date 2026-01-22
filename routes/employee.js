@@ -25,4 +25,8 @@ router.get('/my-history', auth, employeeAccess, empController.getMyAttendance);
 // Raise requests for Leaves, Missing Punches (Swipe), or WFH
 router.post('/request', auth, employeeAccess, empController.raiseRequest);
 
+// 5. Get Request Status
+// Used for the Leave Requests view in the Flutter app
+router.get('/my-requests', auth, employeeAccess, empController.getMyRequests);
+
 module.exports = router;

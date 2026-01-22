@@ -30,24 +30,24 @@ class ApprovalRepository {
     async updateRequestStatus(requestId, userId, actionData) {
         const { status, comments } = actionData;
 
-        const client = await db.connect();
+        const client = db;
         try {
             await client.query('BEGIN');
 
             // Log the history [cite: 65]
-            await client.query(
-                `INSERT INTO approval_history (request_id, approver_id, action, comments) 
-                 VALUES ($1, $2, $3, $4)`,
-                [requestId, userId, status, comments]
-            );
-
+            
             // Update main request status
             const { rows } = await client.query(
                 `UPDATE approval_requests 
-                 SET status = $1, current_level = current_level + 1
-                 WHERE id = $2 AND sla_expiry > CURRENT_TIMESTAMP
-                 RETURNING *`,
+                SET status = $1, current_level = current_level + 1
+                WHERE id = $2 AND sla_expiry > CURRENT_TIMESTAMP
+                RETURNING *`,
                 [status, requestId]
+            );
+            await client.query(
+                `INSERT INTO approval_history (request_id, approver_id, action, comments,level) 
+                 VALUES ($1, $2, $3, $4, $5)`,
+                [requestId, userId, status, comments, rows[0].current_level]
             );
 
             await client.query('COMMIT');
@@ -56,7 +56,6 @@ class ApprovalRepository {
             await client.query('ROLLBACK');
             throw e;
         } finally {
-            client.release();
         }
     }
 
@@ -71,7 +70,7 @@ class ApprovalRepository {
     }
 
     async getRequestsByClient(clientId, filters = {}) {
-        const { status, requesterId, type } = filters;
+        const { status, requesterId, type, currentLevel } = filters;
 
         let queryParams = [clientId];
         let filterSQL = "";
@@ -87,6 +86,10 @@ class ApprovalRepository {
         if (type) {
             queryParams.push(type);
             filterSQL += ` AND ar.type = $${queryParams.length}`;
+        }
+        if (currentLevel) {
+            queryParams.push(currentLevel);
+            filterSQL += ` AND ar.current_level = $${queryParams.length}`;
         }
 
         const query = `

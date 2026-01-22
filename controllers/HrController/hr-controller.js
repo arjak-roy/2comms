@@ -90,7 +90,7 @@ exports.getPendingApprovals = async (req, res) => {
         // Filters can include request type (Leave, OT, Swipe, etc.) 
         const { type, status = 'Pending' } = req.query; 
 
-        const requests = await approvalRepo.getRequestsByClient(clientId, { status, type , reqesterId});
+        const requests = await approvalRepo.getRequestsByClient(clientId, { status, type});
         res.status(200).json({ success: true, data: requests });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

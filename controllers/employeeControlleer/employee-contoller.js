@@ -47,6 +47,16 @@ exports.getMyAttendance = async (req, res) => {
     }
 };
 
+exports.getMyRequests = async (req, res) => {
+    try {
+        const client_id = req.user.client_id;
+        const requests = await approvalRepo.getRequestsByClient(client_id, { requesterId: req.user.id });
+        res.status(200).json({ success: true, data: requests });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
 // 4. Get Current Shift/Roster
 exports.getTodayRoster = async (req, res) => {
     try {
