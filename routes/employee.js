@@ -8,7 +8,7 @@ const authorize = require('../middlewares/auth/role-auth');
  * EMPLOYEE SELF-SERVICE ROUTES
  * Access: Employee, HR, Admin (Multi-level access for testing/support)
  */
-const employeeAccess = authorize(['Employee', 'HR', 'Admin', 'Super Admin']);
+const employeeAccess = authorize(['Employee']);
 
 // 1. Mark Attendance (Requires Geofencing & Selfie from Mobile)
 router.post('/punch', auth, employeeAccess, empController.punchAttendance);

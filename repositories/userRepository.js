@@ -72,6 +72,46 @@ class UserRepository {
     }
 
 
+async createEmployee(userData) {
+    const client = db;
+    try {
+        await client.query('BEGIN');
+
+        // 1. Insert the Employee
+        const userQuery = `
+            INSERT INTO users (name,hashed_password ,email, role, client_id, branch_id, manager_id)
+            VALUES ($1, $2, $3 ,'Employee', $4, $5, $6)
+            RETURNING id;
+        `;
+        const userRes = await client.query(userQuery, [
+            userData.name, userData.hashedPassword ,userData.email,userData.client_id, userData.branch_id, userData.manager_id
+        ]);
+        const newUserId = userRes.rows[0].id;
+
+        // 2. Initialize Leave Balances
+        // You can fetch these types from a config or use these standard defaults
+        const defaultLeaveTypes = [
+            { name: 'Paid Leave', initial: 12 }, 
+            { name: 'Sick Leave', initial: 6 },
+            { name: 'Casual Leave', initial: 6 }
+        ];
+
+        for (const leave of defaultLeaveTypes) {
+            await client.query(
+                `INSERT INTO leave_balances (employee_id, client_id, leave_type_name, balance_days)
+                 VALUES ($1, $2, $3, $4)`,
+                [newUserId, userData.clientId, leave.name, leave.initial]
+            );
+        }
+
+        await client.query('COMMIT');
+        return userRes.rows[0];
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+    }
+}
 /**
  * Handles the transfer of an employee to a new client.
  * Enforces the "Fresh Start" rule by lapsing all old leave data.

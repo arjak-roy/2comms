@@ -49,7 +49,7 @@ exports.onboardEmployee = async (req, res) => {
         const hashedPassword = await bcrypt.hash(password, 10);
 
         // Map to SQL-friendly keys
-        const employee = await userRepo.create({
+        const employee = await userRepo.createEmployee({
             name:name, 
             email: email, 
             hashedPassword: hashedPassword, // Match DB column

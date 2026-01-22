@@ -8,8 +8,7 @@ const calculateInterval = require('../../utils/calculate-intervals');
 exports.getDailySnapshot = async (req, res) => {
     try {
         const clientId = req.user.client_id; 
-        const { date } = req.query; // Default to today in the repo
-        
+        const date  = req.body.date; // Default to today in the repo
         const snapshot = await attendanceRepo.getDailySnapshot(clientId, date);
         res.status(200).json({ success: true, data: snapshot });
     } catch (error) {
@@ -17,18 +16,20 @@ exports.getDailySnapshot = async (req, res) => {
     }
 };
 
+
 // 2. Attendance Regularization
 // HR can perform regularization to correct missing punches or errors [cite: 43, 44]
 
 exports.regularizeAttendance = async (req, res) => {
     try {
-        const { employeeId, date, status, punches } = req.body;
+        const { employeeId, date, status, punches, is_late } = req.body;
         const clientId = req.user.clientId;
-        const total_hours = calculateInterval(punches);
+        const total_hours = calculateInterval.calculateIntervals(punches);
         const result = await attendanceRepo.updateAttendance(clientId, employeeId, {
             date,
             status, // e.g., Present, Half-Day [cite: 33]
-            total_hours
+            total_hours,
+            is_late
         });
 
         res.status(200).json({ success: true, data: result });
@@ -41,10 +42,10 @@ exports.regularizeAttendance = async (req, res) => {
 // HR can convert missing attendance to LOP or adjust against leave 
 exports.manageAbsence = async (req, res) => {
     try {
-        const { attendanceId, action } = req.body; // action: 'LOP', 'LEAVE_ADJUST'
+        const { attendanceId, action, employeeId } = req.body; // action: 'LOP', 'LEAVE_ADJUST'
         const clientId = req.user.client_id;
 
-        const result = await attendanceRepo.processAbsence(clientId, attendanceId, action);
+        const result = await attendanceRepo.processAbsence(attendanceId, employeeId, action);
         res.status(200).json({ success: true, data: result });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

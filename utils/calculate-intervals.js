@@ -61,4 +61,3 @@ module.exports.calculateIntervals = (punches)=> {
 
 // console.log(calculateIntervals(punches));
 
-

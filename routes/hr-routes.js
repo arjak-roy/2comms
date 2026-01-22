@@ -12,7 +12,7 @@ const authorize = require('../middlewares/auth/role-auth');
 const hrAndAdmin = authorize(['Admin', 'HR', 'Super Admin']);
 
 // 1. Attendance Monitoring & Snapshot
-router.get('/attendance/snapshot', auth, hrAndAdmin, hrController.getDailySnapshot);
+router.post('/attendance/snapshot', auth, hrAndAdmin, hrController.getDailySnapshot);
 
 // 2. Attendance Regularization (Manual Corrections)
 router.post('/attendance/regularize', auth, hrAndAdmin, hrController.regularizeAttendance);

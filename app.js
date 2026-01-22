@@ -9,6 +9,7 @@ var superadminRouter = require('./routes/superadminRouter')
 var adminClient = require('./routes/clientadmin-routes')
 var hrrouter = require('./routes/hr-routes')
 var managerRouter = require('./routes/manager-routes')
+var employeeRouter = require('./routes/employee')
 
 require('dotenv').config();
 var app = express();
@@ -30,6 +31,7 @@ app.use('/superadmin', superadminRouter);
 app.use('/clientadmin', adminClient);
 app.use('/hr', hrrouter);
 app.use('/manager', managerRouter);
+app.use('/employee', employeeRouter);
 
 // catch 404 and forward to error handler
 app.use(function(req, res, next) {

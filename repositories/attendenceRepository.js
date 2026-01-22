@@ -2,8 +2,8 @@ const db = require('../config/db-config');
 
 class AttendanceRepository {
     // Record punch-in/out with location validation [cite: 15, 18]
-    async recordPunch(employeeId, clientId, punchData) {
-        const { type, locationType, lat, lng, selfieUrl } = punchData;
+    async recordPunch(clientId, employeeId, punchData) {
+        const { type, location_type, lat, lng, selfieUrl } = punchData;
         //geofence logic here
         const query = `
             INSERT INTO attendance_punches (
@@ -12,7 +12,7 @@ class AttendanceRepository {
             RETURNING *;
         `;
         const { rows } = await db.query(query, [
-            employeeId, clientId, type, locationType, lat, lng, selfieUrl
+            employeeId, clientId, type, location_type, lat, lng, selfieUrl
         ]);
         return rows[0];
     }
@@ -23,7 +23,7 @@ class AttendanceRepository {
             SELECT 
                 u.name, u.designation, ap.location_type, ap.punch_time,
                 CASE 
-                    WHEN ap.punch_time > (s.start_time + (s.grace_period_mins || ' minutes')::interval) THEN true 
+                    WHEN ap.punch_time::time > (s.start_time + (s.grace_period_mins || ' minutes')::interval) THEN true 
                     ELSE false 
                 END as is_late
             FROM users u
@@ -31,75 +31,81 @@ class AttendanceRepository {
             JOIN rosters r ON u.id = r.employee_id AND r.roster_date = $2
             JOIN shifts s ON r.shift_id = s.id
             WHERE u.client_id = $1 AND ap.punch_type = 'IN' 
-            AND DATE(ap.punch_time) = $2;
+            AND DATE(ap.punch_time) = ${date? `$2` : `CURRENT_DATE`};
         `;
-        const { rows } = await db.query(query, [clientId, date || 'CURRENT_DATE']);
+        const { rows } = await db.query(query, [clientId, date]);
         return rows;
     }
 
     // HR Regularization: Manual status override [cite: 33, 37, 43]
     async updateAttendance(clientId, employeeId, data) {
-        const { date, status, total_hours } = data;
-        const query = `
-            INSERT INTO daily_attendance_summary (employee_id, client_id, summary_date, status, total_hours)
-            VALUES ($1, $2, $3, $4, $5)
-            ON CONFLICT (employee_id, summary_date) 
-            DO UPDATE SET status = $4, total_hours = $5
-            RETURNING *;
-        `;
-        const { rows } = await db.query(query, [employeeId, clientId, date, status, total_hours]);
-        return rows[0];
+        try {
+            const { date, status, total_hours, is_late } = data;
+            const query = `
+                INSERT INTO daily_attendance_summary (employee_id, client_id, summary_date, status, total_hours, is_late)
+                VALUES ($1, $2, $3, $4, $5, $6)
+                ON CONFLICT (employee_id, summary_date) 
+                DO UPDATE SET status = $4, total_hours = $5, is_late = $6
+                RETURNING *;
+            `;
+            const { rows } = await db.query(query, [employeeId, clientId, date, status, total_hours,is_late]);
+            return rows[0];
+        } catch (error) {
+            throw error;
+        }
     }
-/**
- * Processes an absence by either applying Loss of Pay (LOP) 
- * or deducting from the employee's leave balance.
- */
-async processAbsence(clientId, attendanceId, action) {
+    /**
+     * Processes an absence by either applying Loss of Pay (LOP) 
+     * or deducting from the employee's leave balance.
+     */
+async processAbsence(attendanceId, employeeId, action) {
     const client = await db.connect();
     try {
         await client.query('BEGIN');
 
-        // 1. Fetch the attendance record and the associated employee
-        const attFetchQuery = `
-            SELECT employee_id, summary_date 
-            FROM daily_attendance_summary 
-            WHERE id = $1 AND client_id = $2
+        // 1. Verify the attendance record exists for this employee
+        const checkQuery = `
+            SELECT id FROM daily_attendance_summary 
+            WHERE id = $1 AND employee_id = $2
         `;
-        const attRes = await client.query(attFetchQuery, [attendanceId, clientId]);
+        const checkRes = await client.query(checkQuery, [attendanceId, employeeId]);
         
-        if (attRes.rows.length === 0) throw new Error("Attendance record not found.");
-        const { employee_id, summary_date } = attRes.rows[0];
+        if (checkRes.rows.length === 0) {
+            throw new Error("Attendance record not found for this employee.");
+        }
 
         let finalStatus = 'Absent';
 
         if (action === 'LEAVE_ADJUST') {
-            // 2. Check if the employee has enough balance (e.g., 'Paid Leave')
-            // Requirement: Adjustment is only possible if the client enables the option 
-            const balanceCheck = await client.query(
+            // 2. Atomic Update: Deduct 1 day from balance ONLY if they have >= 1 day
+            const balanceUpdate = await client.query(
                 `UPDATE leave_balances 
                  SET balance_days = balance_days - 1 
-                 WHERE employee_id = $1 AND balance_days >= 1 
-                 AND leave_type_name = 'Paid Leave'
+                 WHERE employee_id = $1 
+                 AND leave_type_name = 'Paid Leave' 
+                 AND balance_days >= 1 
                  RETURNING balance_days`,
-                [employee_id]
+                [employeeId]
             );
 
-            if (balanceCheck.rows.length === 0) {
-                throw new Error("Insufficient leave balance to adjust absence.");
+            if (balanceUpdate.rows.length === 0) {
+                throw new Error("Insufficient Paid Leave balance.");
             }
             finalStatus = 'Leave';
         } else if (action === 'LOP') {
-            finalStatus = 'Absent'; // In payroll, 'Absent' usually triggers LOP
+            finalStatus = 'Absent'; // LOP usually stays as 'Absent' for payroll processing
         }
 
-        // 3. Update the attendance summary status
-        const updateQuery = `
+        // 3. Update the specific day's summary
+        const updateSummaryQuery = `
             UPDATE daily_attendance_summary 
-            SET status = $1, is_late = false 
+            SET status = $1, 
+                total_hours = 0, -- Absence usually implies 0 worked hours
+                is_late = false 
             WHERE id = $2
             RETURNING *
         `;
-        const { rows } = await client.query(updateQuery, [finalStatus, attendanceId]);
+        const { rows } = await client.query(updateSummaryQuery, [finalStatus, attendanceId]);
 
         await client.query('COMMIT');
         return rows[0];
@@ -110,9 +116,9 @@ async processAbsence(clientId, attendanceId, action) {
         client.release();
     }
 }
-async generateReport(clientId, filters) {
+    async generateReport(clientId, filters) {
         const { type, branchId, view } = filters;
-        
+
         let queryParams = [clientId];
         let branchFilter = "";
         let timeFilter = "";
@@ -166,10 +172,10 @@ async generateReport(clientId, filters) {
 
         } else if (type === 'LEAVE') {
             // Adjusted time filter for leaves based on start_date
-            let leaveTimeFilter = (view === 'DAY') 
+            let leaveTimeFilter = (view === 'DAY')
                 ? "AND l.start_date <= CURRENT_DATE AND l.end_date >= CURRENT_DATE"
                 : (view === 'WEEK') ? "AND l.start_date >= DATE_TRUNC('week', CURRENT_DATE)"
-                : "AND l.start_date >= DATE_TRUNC('month', CURRENT_DATE)";
+                    : "AND l.start_date >= DATE_TRUNC('month', CURRENT_DATE)";
 
             const query = `
                 SELECT u.name, l.type, l.start_date, l.end_date, l.status
@@ -205,7 +211,7 @@ async generateReport(clientId, filters) {
             AND EXTRACT(YEAR FROM summary_date) = ${targetYear}
             ORDER BY summary_date DESC;
         `;
-        
+
         const { rows } = await db.query(query, [employeeId]);
         return rows;
     }
@@ -234,20 +240,20 @@ async generateReport(clientId, filters) {
             WHERE r.employee_id = $1 
             AND r.roster_date = CURRENT_DATE;
         `;
-        
+
         const { rows } = await db.query(query, [employeeId]);
         return rows[0] || null;
     }
     async getDailySnapshotByManager(managerId, date) {
-    const query = `
+        const query = `
         SELECT u.name, u.designation, ap.punch_time, ap.punch_type
         FROM users u
         LEFT JOIN attendance_punches ap ON u.id = ap.employee_id AND ap.punch_time::date = $2
         WHERE u.manager_id = $1
     `;
-    const { rows } = await db.query(query, [managerId, date || 'CURRENT_DATE']);
-    return rows;
-}
+        const { rows } = await db.query(query, [managerId, date || 'CURRENT_DATE']);
+        return rows;
+    }
 }
 
 module.exports = new AttendanceRepository();

@@ -168,3 +168,7 @@ CREATE TABLE policy_change_logs (
     new_value JSONB,
     changed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+ALTER TABLE daily_attendance_summary 
+ADD CONSTRAINT unique_employee_daily_summary 
+UNIQUE (employee_id, summary_date);
