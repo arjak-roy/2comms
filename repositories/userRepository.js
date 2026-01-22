@@ -1,0 +1,155 @@
+const db = require('../config/db-config') // Importing your centralized query method
+
+class UserRepository {
+    /**
+     * Find user by email (Global lookup for login)
+     */
+    async findByEmail(email) {
+        const query = `
+            SELECT id, name, email, hashed_password, role, client_id, branch_id 
+            FROM users 
+            WHERE email = $1 AND is_active = TRUE
+            LIMIT 1;
+        `;
+        const { rows } = await db.query(query, [email]);
+        return rows[0];
+    }
+
+    /**
+     * Find user by ID (Scoped by client_id for multi-tenant security)
+     */
+    async findById(userId, clientId) {
+        const query = `
+            SELECT id, name, email, role, branch_id, manager_id 
+            FROM users 
+            WHERE id = $1 AND client_id = $2;
+        `;
+        const { rows } = await db.query(query, [userId, clientId]);
+        return rows[0];
+    }
+
+    /**
+     * Find the HR Manager for a specific Client (Tenant)
+     */
+    async findHRByClientId(clientId) {
+        const query = `
+            SELECT id, name, email 
+            FROM users 
+            WHERE client_id = $1 AND role = 'HR' AND is_active = TRUE
+            LIMIT 1;
+        `;
+        const { rows } = await db.query(query, [clientId]);
+        return rows[0];
+    }
+
+    /**
+     * Get all employees for a specific manager's snapshot
+     */
+    async findByManager(managerId, clientId) {
+        const query = `
+            SELECT id, name, email, role, branch_id 
+            FROM users 
+            WHERE manager_id = $1 AND client_id = $2;
+        `;
+        const { rows } = await db.query(query, [managerId, clientId]);
+        return rows;
+    }
+
+    /**
+     * Admin Action: Create new User
+     */
+    async create(userData) {
+        const { name, email, hashedPassword, role, client_id, branch_id, manager_id } = userData;
+        console.log(userData);
+        const query = `
+            INSERT INTO users (name, email, hashed_password, role, client_id, branch_id, manager_id)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            RETURNING id, name, email, role, client_id;
+        `;
+        const values = [name, email, hashedPassword, role, client_id, branch_id, manager_id];
+        const { rows } = await db.query(query, values);
+        return rows[0];
+    }
+
+
+/**
+ * Handles the transfer of an employee to a new client.
+ * Enforces the "Fresh Start" rule by lapsing all old leave data.
+ */
+ async transferEmployee (employeeData){
+    const client = await db.connect();
+    try {
+        const { employeeId, newClientId, newBranchId, newManagerId } = employeeData;
+
+        await client.query('BEGIN');
+
+        // 1. Lapse ALL leave balances and accruals from the old client
+        await client.query(
+            `UPDATE leave_balances 
+             SET balance_days = 0, accrued_this_cycle = 0 
+             WHERE employee_id = $1`,
+            [employeeId]
+        );
+
+        // 2. Expire future approved leaves (not yet taken)
+        await client.query(
+            `UPDATE approval_requests 
+             SET status = 'Expired' 
+             WHERE requester_id = $1 
+             AND status = 'Approved' 
+             AND (details->>'leave_date')::date > CURRENT_DATE`,
+            [employeeId]
+        );
+
+        // 3. Update the employee's main record to the new Client/Branch
+        const updateQuery = `
+            UPDATE users 
+            SET client_id = $1, 
+                branch_id = $2, 
+                manager_id = $3 
+            WHERE id = $4 
+            RETURNING id, name, client_id;
+        `;
+        const { rows } = await client.query(updateQuery, [
+            newClientId, 
+            newBranchId, 
+            newManagerId, 
+            employeeId
+        ]);
+
+        await client.query('COMMIT');
+
+        res.status(200).json({ 
+            success: true, 
+            message: "Transfer successful. Old balances lapsed and future leaves expired.",
+            data: rows[0]
+        });
+
+    } catch (error) {
+        await client.query('ROLLBACK');
+        res.status(500).json({ success: false, error: error.message });
+    } finally {
+        client.release();
+    }
+};
+
+async updateCycleStatus(clientId, cycleId, status) {
+    // Status can be 'Open', 'Locked', or 'Frozen' 
+    const query = `
+        UPDATE attendance_cycles 
+        SET 
+            status = $1, 
+            frozen_at = CASE WHEN $1 = 'Frozen' THEN CURRENT_TIMESTAMP ELSE frozen_at END,
+            locked_at = CASE WHEN $1 = 'Locked' THEN CURRENT_TIMESTAMP ELSE locked_at END
+        WHERE id = $2 
+          AND client_id = $3 
+          AND (status = 'Open' OR status = 'Locked') -- Ensures client isolation and state flow
+          AND status != 'Frozen' -- Prevents modifications once audit is finalized 
+        RETURNING *;
+    `;
+    const { rows } = await db.query(query, [status, cycleId, clientId]);
+    return rows[0];
+}
+}
+
+module.exports = new UserRepository();
