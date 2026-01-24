@@ -70,13 +70,16 @@ exports.finalizeCycle = async (req, res) => {
 // HR views leave and attendance data at branch or client levels 
 exports.getReports = async (req, res) => {
     try {
-        const { type, branchId, view } = req.query; // type: 'LEAVE' or 'ATTENDANCE'; view: 'MONTH' , 'WEEK', 'DAY'
+        console.log(req.body);
+        const { type, branchId, view } = req.body; // type: 'LEAVE' or 'ATTENDANCE'; view: 'MONTH' , 'WEEK', 'DAY'
         const clientId = req.user.client_id;
 
         const report = await attendanceRepo.generateReport(clientId, { type, branchId, view });
+        console.log(report);
         res.status(200).json({ success: true, data: report });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        res.status(500).json({ success: false, error: error });
+        
     }
 };
 
@@ -87,10 +90,12 @@ exports.getReports = async (req, res) => {
 exports.getPendingApprovals = async (req, res) => {
     try {
         const clientId = req.user.client_id;
+        const role = req.user.role;
         // Filters can include request type (Leave, OT, Swipe, etc.) 
-        const { type, status = 'Pending' } = req.query; 
+        
+        const { type, status = role === 'Manager' ? 'Pending' : 'Approved', level = role==='Manager' ? 1 : 2 } = req.query; 
 
-        const requests = await approvalRepo.getRequestsByClient(clientId, { status, type});
+        const requests = await approvalRepo.getRequestsByClient(clientId, { status, type, minLevel: level, isManager: role === 'Manager' });
         res.status(200).json({ success: true, data: requests });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -101,6 +106,7 @@ exports.getPendingApprovals = async (req, res) => {
 // HR acts as an approver or overrides based on hierarchy 
 exports.actionApprovalRequest = async (req, res) => {
     try {
+        console.log(req.body);
         const { requestId, action, comments } = req.body; // action: 'Approved' or 'Rejected' 
         const userId = req.user.id; // The HR user performing the action
 
@@ -123,11 +129,21 @@ exports.sendApprovalReminders = async (req, res) => {
         
         // Logic to find requests older than 48h and send notifications [cite: 46, 50]
         const remindersSent = await approvalRepo.notifyPendingApprovers(clientId);
-        
-        res.status(200).json({ 
+        if(remindersSent.length === 0) return res.status(200).json({ success: true, message: 'No reminders sent. SLA is up to date.' });
+         res.status(200).json({ 
             success: true, 
             message: `Reminders triggered for ${remindersSent} pending requests.` 
         });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.getEmployees = async (req, res) => {
+    try {
+        const clientId = req.user.client_id;
+        const employees = await userRepo.getEmployeesByClient(clientId);
+        res.status(200).json({ success: true, data: employees });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

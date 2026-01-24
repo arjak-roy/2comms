@@ -2,6 +2,7 @@ var express = require('express');
 var router = express.Router();
 const loginCOntroller = require('../controllers/Auth/login');
 const logoutController = require('../controllers/Auth/logout');
+const getMeController = require('../controllers/Auth/getMe');
 const auth = require('../middlewares/auth/auth-middleware');
 
 /**
@@ -11,6 +12,7 @@ const auth = require('../middlewares/auth/auth-middleware');
  */
 router.post('/api/auth/login', loginCOntroller.login);
 router.post('/api/auth/logout', auth, logoutController.logout);
+router.get('/api/auth/getme', auth, getMeController.getMe);
 /**
  * @route   POST /api/auth/logout
  * @desc    Clear the HttpOnly cookie

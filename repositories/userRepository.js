@@ -190,6 +190,16 @@ async updateCycleStatus(clientId, cycleId, status) {
     const { rows } = await db.query(query, [status, cycleId, clientId]);
     return rows[0];
 }
+async getEmployeesByClient(clientId) {
+    const query = `
+        SELECT id, name, email, role, branch_id 
+        FROM users 
+        WHERE client_id = $1 AND role = 'Employee';
+    `;
+    const { rows } = await db.query(query, [clientId]);
+    return rows;
+
+}
 }
 
 module.exports = new UserRepository();

@@ -116,79 +116,93 @@ async processAbsence(attendanceId, employeeId, action) {
         client.release();
     }
 }
-    async generateReport(clientId, filters) {
-        const { type, branchId, view } = filters;
+async generateReport(clientId, filters) {
+    const { type, branchId, view } = filters;
+    let queryParams = [clientId]; // $1
+    let branchFilter = "";
+    
+    // 1. Handle Branch Filtering
+    if (branchId && branchId !== 'all') {
+        queryParams.push(branchId);
+        branchFilter = `AND u.branch_id = $${queryParams.length}`;
+    }
 
-        let queryParams = [clientId];
-        let branchFilter = "";
-        let timeFilter = "";
-
-        // 1. Handle Branch Filtering
-        if (branchId && branchId !== 'all') {
-            queryParams.push(branchId);
-            branchFilter = `AND u.branch_id = $${queryParams.length}`;
-        }
-
-        // 2. Handle Time View Filtering
-        // 'view' can be 'DAY', 'WEEK', or 'MONTH'
-        if (view === 'DAY') {
-            timeFilter = `AND p.punch_time::date = CURRENT_DATE`;
-        } else if (view === 'WEEK') {
-            timeFilter = `AND p.punch_time >= DATE_TRUNC('week', CURRENT_DATE)`;
-        } else {
-            // Default to MONTH
-            timeFilter = `AND p.punch_time >= DATE_TRUNC('month', CURRENT_DATE)`;
-        }
-
+    try {
         if (type === 'ATTENDANCE') {
+            // Standardize Time Filters for Attendance
+            let timeFilter = "";
+            if (view === 'DAY') {
+                timeFilter = `AND p.punch_time::date = CURRENT_DATE`;
+            } else if (view === 'WEEK') {
+                timeFilter = `AND p.punch_time >= DATE_TRUNC('week', CURRENT_DATE)`;
+            } else {
+                timeFilter = `AND p.punch_time >= DATE_TRUNC('month', CURRENT_DATE)`;
+            }
+
             const query = `
                 SELECT 
                     u.name as employee_name,
                     u.designation,
                     b.name as branch_name,
                     p.punch_date,
-                    MIN(p.punch_time) FILTER (WHERE p.punch_type = 'IN') as in_time,
-                    MAX(p.punch_time) FILTER (WHERE p.punch_type = 'OUT') as out_time,
-                    -- Calculated metrics for the report
+                    -- Use TO_CHAR to make the time readable for the React Frontend
+                    TO_CHAR(MIN(p.punch_time) FILTER (WHERE p.punch_type = 'IN'), 'HH24:MI:SS') as in_time,
+                    TO_CHAR(MAX(p.punch_time) FILTER (WHERE p.punch_type = 'OUT'), 'HH24:MI:SS') as out_time,
                     CASE 
-                        WHEN MIN(p.punch_time) FILTER (WHERE p.punch_type = 'IN') IS NOT NULL 
-                        THEN 'Present' ELSE 'Absent' 
+                        WHEN COUNT(p.id) FILTER (WHERE p.punch_type = 'IN') > 0 THEN 'Present' 
+                        ELSE 'Absent' 
                     END as attendance_status
                 FROM users u
                 JOIN branches b ON u.branch_id = b.id
                 LEFT JOIN (
-                    SELECT *, punch_time::date as punch_date 
+                    SELECT id, employee_id, punch_type, punch_time, punch_time::date as punch_date 
                     FROM attendance_punches 
-                    WHERE client_id = $1
+                    WHERE client_id = $1 -- Always use the first param for client_id
                 ) p ON u.id = p.employee_id
                 WHERE u.client_id = $1 
                 ${branchFilter} 
                 ${timeFilter}
                 GROUP BY u.id, u.name, u.designation, b.name, p.punch_date
-                ORDER BY p.punch_date DESC;
+                ORDER BY p.punch_date DESC, u.name ASC;
             `;
+
             const { rows } = await db.query(query, queryParams);
             return rows;
 
         } else if (type === 'LEAVE') {
-            // Adjusted time filter for leaves based on start_date
-            let leaveTimeFilter = (view === 'DAY')
-                ? "AND l.start_date <= CURRENT_DATE AND l.end_date >= CURRENT_DATE"
-                : (view === 'WEEK') ? "AND l.start_date >= DATE_TRUNC('week', CURRENT_DATE)"
-                    : "AND l.start_date >= DATE_TRUNC('month', CURRENT_DATE)";
+            // Adjusted time filter for leaves
+            let leaveTimeFilter = "";
+            if (view === 'DAY') {
+                leaveTimeFilter = "AND l.start_date <= CURRENT_DATE AND l.end_date >= CURRENT_DATE";
+            } else if (view === 'WEEK') {
+                leaveTimeFilter = "AND l.start_date >= DATE_TRUNC('week', CURRENT_DATE)";
+            } else {
+                leaveTimeFilter = "AND l.start_date >= DATE_TRUNC('month', CURRENT_DATE)";
+            }
 
             const query = `
-                SELECT u.name, l.type, l.start_date, l.end_date, l.status
+                SELECT 
+                    u.name as employee_name, 
+                    l.type as leave_type, 
+                    l.start_date, 
+                    l.end_date, 
+                    l.status
                 FROM users u
                 JOIN leaves l ON u.id = l.employee_id
-                WHERE u.client_id = $1 ${branchFilter} ${leaveTimeFilter}
+                WHERE u.client_id = $1 
+                ${branchFilter} 
+                ${leaveTimeFilter}
                 ORDER BY l.start_date DESC;
             `;
+
             const { rows } = await db.query(query, queryParams);
             return rows;
         }
+    } catch (error) {
+        console.error("Report Generation Error:", error);
+        throw error;
     }
-    async getEmployeeHistory(employeeId, month, year) {
+}    async getEmployeeHistory(employeeId, month, year) {
         // If month/year aren't provided, default to current month
         const targetMonth = month || "EXTRACT(MONTH FROM CURRENT_DATE)";
         const targetYear = year || "EXTRACT(YEAR FROM CURRENT_DATE)";

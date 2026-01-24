@@ -18,8 +18,9 @@ var app = express();
 app.set('views', path.join(__dirname, 'views'));
 app.set('view engine', 'jade');
 app.use(cors({
-    origin: 'http://localhost:3000', // Your frontend URL
-    credentials: true                // Allows cookies to be sent
+    origin: 'http://localhost:5173', // Your frontend URL
+    credentials: true,            // Allows cookies to be sent,
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
 }));app.use(logger('dev'));
 app.use(express.json());
 app.use(express.urlencoded({ extended: false }));

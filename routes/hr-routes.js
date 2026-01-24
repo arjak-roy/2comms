@@ -24,7 +24,7 @@ router.post('/attendance/manage-absence', auth, hrAndAdmin, hrController.manageA
 router.post('/cycle/finalize', auth, hrAndAdmin, hrController.finalizeCycle);
 
 // 5. Reporting (Monthly, Weekly, Daily views)
-router.get('/reports', auth, hrAndAdmin, hrController.getReports);
+router.post('/reports', auth, hrAndAdmin, hrController.getReports);
 
 // 6. Manage Pending Approvals (List view)
 router.get('/approvals/pending', auth, hrAndAdmin, hrController.getPendingApprovals);
@@ -34,5 +34,8 @@ router.post('/approvals/action', auth, hrAndAdmin, hrController.actionApprovalRe
 
 // 8. Trigger Reminders (Manual SLA push)
 router.post('/approvals/reminders', auth, hrAndAdmin, hrController.sendApprovalReminders);
+
+//9. Get Employees by Client
+router.get('/employees', auth, hrAndAdmin, hrController.getEmployees);
 
 module.exports = router;

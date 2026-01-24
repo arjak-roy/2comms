@@ -28,7 +28,7 @@ class ApprovalRepository {
 
     // Advance request through L1, L2, L3 [cite: 45, 50, 51]
     async updateRequestStatus(requestId, userId, actionData) {
-        const { status, comments } = actionData;
+        const { status, comments  } = actionData;
 
         const client = db;
         try {
@@ -70,7 +70,7 @@ class ApprovalRepository {
     }
 
     async getRequestsByClient(clientId, filters = {}) {
-        const { status, requesterId, type, currentLevel } = filters;
+        const { status, requesterId, type, minLevel, isManager } = filters;
 
         let queryParams = [clientId];
         let filterSQL = "";
@@ -87,9 +87,13 @@ class ApprovalRepository {
             queryParams.push(type);
             filterSQL += ` AND ar.type = $${queryParams.length}`;
         }
-        if (currentLevel) {
-            queryParams.push(currentLevel);
+        if (isManager) {
+            queryParams.push(minLevel);
             filterSQL += ` AND ar.current_level = $${queryParams.length}`;
+        }
+        if(!isManager) {
+            queryParams.push(minLevel);
+            filterSQL += ` AND ar.current_level >= $${queryParams.length}`;
         }
 
         const query = `
@@ -116,33 +120,41 @@ class ApprovalRepository {
     async notifyPendingApprovers() {
         // This query identifies the current manager/approver for pending requests
         // and returns their contact details for the notification service
-        const query = `
-            SELECT 
-                ar.id as request_id,
-                ar.type as request_type,
-                ar.sla_expiry,
-                requester.name as employee_name,
-                approver.email as manager_email,
-                approver.name as manager_name
-            FROM approval_requests ar
-            JOIN users requester ON ar.requester_id = requester.id
-            -- Logic: Link to the manager/approver based on current_level
-            -- For Level 1, it's the manager_id; for L2/L3, it might be HR
-            JOIN users approver ON (
-                CASE 
-                    WHEN ar.current_level = 1 THEN requester.manager_id = approver.id
-                    ELSE approver.role = 'HR' AND approver.client_id = ar.client_id
-                END
-            )
-            WHERE ar.status = 'Pending' 
-            AND ar.sla_expiry > CURRENT_TIMESTAMP
-            AND ar.sla_expiry < (CURRENT_TIMESTAMP + INTERVAL '24 hours');
-        `;
-
-        const { rows } = await db.query(query);
-
-        // Return this list so your Notification Service (Nodemailer/Firebase) can loop through them
-        return rows;
+try {
+            const query = `
+                SELECT 
+                    ar.id as request_id,
+                    ar.type as request_type,
+                    ar.sla_expiry,
+                    requester.name as employee_name,
+                    approver.email as manager_email,
+                    approver.name as manager_name
+                FROM approval_requests ar
+                JOIN users requester ON ar.requester_id = requester.id
+                -- Logic: Link to the manager/approver based on current_level
+                -- For Level 1, it's the manager_id; for L2/L3, it might be HR
+                JOIN users approver ON (
+                    CASE 
+                        WHEN ar.current_level = 1 THEN requester.manager_id = approver.id
+                        ELSE approver.role = 'HR' AND approver.client_id = ar.client_id
+                    END
+                )
+                WHERE ar.status = 'Pending' 
+                AND ar.sla_expiry > CURRENT_TIMESTAMP
+                AND ar.sla_expiry < (CURRENT_TIMESTAMP + INTERVAL '24 hours');
+            `;
+    
+            const { rows } = await db.query(query);
+            console.log(rows);
+            if(rows.length === 0) { 
+                //if SLA is not going to expire in 24 hours, return an empty array
+                return [];
+            }
+            // Return this list so your Notification Service (Nodemailer/Firebase) can loop through them
+            return rows;
+} catch (error) {
+    throw error;
+}
     }
 }
 
