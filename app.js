@@ -11,7 +11,6 @@ var hrrouter = require('./routes/hr-routes')
 var managerRouter = require('./routes/manager-routes')
 var employeeRouter = require('./routes/employee')
 
-require('dotenv').config();
 var app = express();
 
 // view engine setup
