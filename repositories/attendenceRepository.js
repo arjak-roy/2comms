@@ -18,25 +18,43 @@ class AttendanceRepository {
     }
 
     // Daily snapshot for managers (1 hour after shift start) [cite: 29, 30]
-    async getDailySnapshot(clientId, date) {
-        const query = `
-            SELECT 
-                u.name, u.designation, ap.location_type, ap.punch_time,
-                CASE 
-                    WHEN ap.punch_time::time > (s.start_time + (s.grace_period_mins || ' minutes')::interval) THEN true 
-                    ELSE false 
-                END as is_late
-            FROM users u
-            JOIN attendance_punches ap ON u.id = ap.employee_id
-            JOIN rosters r ON u.id = r.employee_id AND r.roster_date = $2
-            JOIN shifts s ON r.shift_id = s.id
-            WHERE u.client_id = $1 AND ap.punch_type = 'IN' 
-            AND DATE(ap.punch_time) = ${date? `$2` : `CURRENT_DATE`};
-        `;
-        const { rows } = await db.query(query, [clientId, date]);
-        return rows;
-    }
-
+async getDailySnapshot(clientId, date) {
+    // We use a LEFT JOIN on branches to access the 'allow_branch_overrides' and 'branch_rules'
+    const query = `
+        SELECT 
+            u.name, 
+            u.designation, 
+            ap.location_type, 
+            ap.punch_time,
+            CASE 
+                WHEN ap.punch_time::time > (
+                    s.start_time + (
+                        CASE 
+                            -- If branch override is ON and grace_period exists in JSONB, use it
+                            WHEN b.allow_branch_overrides = true AND (b.branch_rules->>'grace_period')::int IS NOT NULL 
+                            THEN (b.branch_rules->>'grace_period')::int
+                            -- Otherwise, fall back to the global shift grace period
+                            ELSE s.grace_period_mins 
+                        END || ' minutes'
+                    )::interval
+                ) THEN true 
+                ELSE false 
+            END as is_late
+        FROM users u
+        JOIN branches b ON u.branch_id = b.id
+        JOIN attendance_punches ap ON u.id = ap.employee_id
+        JOIN rosters r ON u.id = r.employee_id AND r.roster_date = $2
+        JOIN shifts s ON r.shift_id = s.id
+        WHERE u.client_id = $1 
+        AND ap.punch_type = 'IN' 
+        AND DATE(ap.punch_time) = ${date? `$2` : `CURRENT_DATE`};
+    `;
+    
+    // Safety: Ensure date defaults to today if not provided to avoid SQL errors
+    const queryDate = date || new Date().toISOString().split('T')[0];
+    const { rows } = await db.query(query, [clientId, queryDate]);
+    return rows;
+}
     // HR Regularization: Manual status override [cite: 33, 37, 43]
     async updateAttendance(clientId, employeeId, data) {
         try {

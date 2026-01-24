@@ -7,7 +7,7 @@ const bcrypt = require('bcryptjs');
 exports.createBranch = async (req, res) => {
     try {
         const { name, latitude, longitude, radius_meters, address } = req.body;
-        const clientId = req.user.clientId; 
+        const clientId = req.user.client_id; 
 
         const newBranch = await clientRepo.createBranch(clientId, {
             name, 
@@ -19,7 +19,8 @@ exports.createBranch = async (req, res) => {
 
         res.status(201).json({ success: true, data: newBranch });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        console.error(error);
+        res.status(500).json({ success: false, error: error });
     }
 };
 
@@ -72,9 +73,9 @@ exports.onboardEmployee = async (req, res) => {
 exports.updateClientRules = async (req, res) => {
     try {
         const { ot_config, leave_policy_config, attendance_cycle_start, attendance_cycle_end } = req.body;
-        const clientId = req.user.clientId; // Client Admin scope
+        const clientId = req.user.client_id; // Client Admin scope
 
-        const updatedClient = await clientRepo.updateClient(clientId, {
+        const updatedClient = await clientRepo.updateClientRules(clientId, {
             ot_config, 
             leave_policy_config, 
             attendance_cycle_start,
@@ -90,11 +91,10 @@ exports.updateClientRules = async (req, res) => {
 // Configure Branch Overrides
 exports.updateBranchRules = async (req, res) => {
     try {
-        const { branchId } = req.params;
-        const { branch_rules, allow_branch_overrides } = req.body;
-        
+        const { branch_rules, allow_branch_overrides, branchId } = req.body;
+        console.log(req.body);
         // Ensure the branch belongs to the Admin's client
-        const branch = await clientRepo.updateBranch(branchId, req.user.clientId, {
+        const branch = await clientRepo.updateBranchRules(branchId, req.user.client_id, {
             branch_rules,
             allow_branch_overrides
         });
@@ -107,12 +107,12 @@ exports.updateBranchRules = async (req, res) => {
 
 exports.transferEmployee = async (req, res) => {
     try {
-        const { employeeId, newClientId, newBranchId } = req.body;
+        const { employeeId, newClientId, newBranchId, newManagerId } = req.body;
         // 1. Lapse old leave balances
         // 2. Expire future leaves
         // 3. Update client_id and branch_id
-        const result = await userRepo.transferClient(employeeId, newClientId, newBranchId);
-        res.status(200).json({ success: true, message: "Employee transferred and balances reset." });
+        const result = await userRepo.transferEmployee({employeeId, newClientId, newBranchId,newManagerId});
+        res.status(200).json({ success: true, message: "Employee transferred and balances reset.", result });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -121,7 +121,7 @@ exports.transferEmployee = async (req, res) => {
 exports.finalizeCycle = async (req, res) => {
     try {
         const { status } = req.body; // 'LOCKED' or 'FROZEN'
-        const clientId = req.user.clientId;
+        const clientId = req.user.client_id;
         const result = await clientRepo.updateCycleStatus(clientId, status);
         res.status(200).json({ success: true, data: result });
     } catch (error) {

@@ -12,7 +12,7 @@ router.use(authorize('Admin, Super Admin'));
 // --- BRANCH MANAGEMENT ---
 // Requirement: Branches are maintained client-wise [cite: 16]
 router.post('/branches', adminClientController.createBranch);
-router.patch('/branches/:branchId/rules', adminClientController.updateBranchRules);
+router.post('/branches/rules', adminClientController.updateBranchRules);
 router.get('/branches', adminClientController.getAllBranches);
 
 // --- EMPLOYEE & USER MANAGEMENT ---
@@ -24,7 +24,7 @@ router.post('/employees/transfer', adminClientController.transferEmployee);
 
 // --- CLIENT POLICY & RULE CONFIGURATION ---
 // Requirement: Rules for attendance, leave, and OT are controlled at client level 
-router.patch('/rules/global', adminClientController.updateClientRules);
+router.post('/rules/global', adminClientController.updateClientRules);
 
 // Requirement: Common approval framework for swipe, leave, and OT 
 // router.patch('/rules/approvals', adminClientController.configureApprovalFlow);

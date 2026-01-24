@@ -69,3 +69,11 @@ exports.createUser = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+exports.getAllClients = async (req,res) => {
+        try {
+            const clients = await clientRepo.getAllClients();
+            res.status(200).json({ success: true, data: clients });
+        } catch (error) {
+            res.status(500).json({ success: false, error: error.message });
+        }
+    };

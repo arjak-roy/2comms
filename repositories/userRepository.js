@@ -100,7 +100,7 @@ async createEmployee(userData) {
             await client.query(
                 `INSERT INTO leave_balances (employee_id, client_id, leave_type_name, balance_days)
                  VALUES ($1, $2, $3, $4)`,
-                [newUserId, userData.clientId, leave.name, leave.initial]
+                [newUserId, userData.client_id, leave.name, leave.initial]
             );
         }
 
@@ -116,14 +116,16 @@ async createEmployee(userData) {
  * Handles the transfer of an employee to a new client.
  * Enforces the "Fresh Start" rule by lapsing all old leave data.
  */
- async transferEmployee (employeeData){
-    const client = await db.connect();
+async transferEmployee(employeeData) {
+    // Acquire a specific client from the pool for the transaction
+    const client = db; 
+    
     try {
         const { employeeId, newClientId, newBranchId, newManagerId } = employeeData;
 
         await client.query('BEGIN');
 
-        // 1. Lapse ALL leave balances and accruals from the old client
+        // 1. Reset balances for the OLD client records
         await client.query(
             `UPDATE leave_balances 
              SET balance_days = 0, accrued_this_cycle = 0 
@@ -131,24 +133,24 @@ async createEmployee(userData) {
             [employeeId]
         );
 
-        // 2. Expire future approved leaves (not yet taken)
+        // 2. Expire future requests
         await client.query(
             `UPDATE approval_requests 
              SET status = 'Expired' 
              WHERE requester_id = $1 
              AND status = 'Approved' 
-             AND (details->>'leave_date')::date > CURRENT_DATE`,
+             ---AND (start_date)::date > CURRENT_DATE`,
             [employeeId]
         );
 
-        // 3. Update the employee's main record to the new Client/Branch
+        // 3. Update the employee's main record
         const updateQuery = `
             UPDATE users 
             SET client_id = $1, 
                 branch_id = $2, 
                 manager_id = $3 
             WHERE id = $4 
-            RETURNING id, name, client_id;
+            RETURNING *;
         `;
         const { rows } = await client.query(updateQuery, [
             newClientId, 
@@ -156,23 +158,31 @@ async createEmployee(userData) {
             newManagerId, 
             employeeId
         ]);
+        const defaultLeaveTypes = [
+            { name: 'Paid Leave', initial: 12 }, 
+            { name: 'Sick Leave', initial: 6 },
+            { name: 'Casual Leave', initial: 6 }
+        ];
+
+        for (const leave of defaultLeaveTypes) {
+            await client.query(
+                `INSERT INTO leave_balances (employee_id, client_id, leave_type_name, balance_days)
+                 VALUES ($1, $2, $3, $4)`,
+                [employeeId, newClientId, leave.name, leave.initial]
+            );
+        }
 
         await client.query('COMMIT');
-
-        res.status(200).json({ 
-            success: true, 
-            message: "Transfer successful. Old balances lapsed and future leaves expired.",
-            data: rows[0]
-        });
+        return rows[0];
 
     } catch (error) {
         await client.query('ROLLBACK');
-        res.status(500).json({ success: false, error: error.message });
+        console.error("Transfer Error:", error);
+        throw error;
     } finally {
-        client.release();
+        // Always release the client back to the pool
     }
-};
-
+}
 async updateCycleStatus(clientId, cycleId, status) {
     // Status can be 'Open', 'Locked', or 'Frozen' 
     const query = `

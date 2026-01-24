@@ -28,14 +28,14 @@ class ApprovalRepository {
 
     // Advance request through L1, L2, L3 [cite: 45, 50, 51]
     async updateRequestStatus(requestId, userId, actionData) {
-        const { status, comments  } = actionData;
+        const { status, comments } = actionData;
 
         const client = db;
         try {
             await client.query('BEGIN');
 
             // Log the history [cite: 65]
-            
+
             // Update main request status
             const { rows } = await client.query(
                 `UPDATE approval_requests 
@@ -91,7 +91,7 @@ class ApprovalRepository {
             queryParams.push(minLevel);
             filterSQL += ` AND ar.current_level = $${queryParams.length}`;
         }
-        if(!isManager) {
+        if (!isManager) {
             queryParams.push(minLevel);
             filterSQL += ` AND ar.current_level >= $${queryParams.length}`;
         }
@@ -120,7 +120,7 @@ class ApprovalRepository {
     async notifyPendingApprovers() {
         // This query identifies the current manager/approver for pending requests
         // and returns their contact details for the notification service
-try {
+        try {
             const query = `
                 SELECT 
                     ar.id as request_id,
@@ -143,18 +143,18 @@ try {
                 AND ar.sla_expiry > CURRENT_TIMESTAMP
                 AND ar.sla_expiry < (CURRENT_TIMESTAMP + INTERVAL '24 hours');
             `;
-    
+
             const { rows } = await db.query(query);
             console.log(rows);
-            if(rows.length === 0) { 
+            if (rows.length === 0) {
                 //if SLA is not going to expire in 24 hours, return an empty array
                 return [];
             }
             // Return this list so your Notification Service (Nodemailer/Firebase) can loop through them
             return rows;
-} catch (error) {
-    throw error;
-}
+        } catch (error) {
+            throw error;
+        }
     }
 }
 
