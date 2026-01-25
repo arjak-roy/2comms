@@ -78,7 +78,7 @@ async getDailySnapshot(clientId, date) {
      * or deducting from the employee's leave balance.
      */
 async processAbsence(attendanceId, employeeId, action) {
-    const client = await db.connect();
+    const client = db;
     try {
         await client.query('BEGIN');
 
@@ -132,7 +132,7 @@ async processAbsence(attendanceId, employeeId, action) {
         await client.query('ROLLBACK');
         throw e;
     } finally {
-        client.release();
+
     }
 }
 async generateReport(clientId, filters) {
@@ -291,6 +291,29 @@ try {
         const { rows } = await db.query(query, [managerId, date]);
         return rows;
     }
+    // repositories/attendenceRepository.js
+async getAbsentEmployees(clientId, date) {
+    const query = `
+        SELECT 
+            das.id as summary_id,
+            u.id as employee_id,
+            u.name,
+            u.designation,
+            b.name as branch_name,
+            das.summary_date,
+            das.status
+        FROM daily_attendance_summary das
+        JOIN users u ON das.employee_id = u.id
+        JOIN branches b ON u.branch_id = b.id
+        WHERE das.client_id = $1 
+        AND das.status = 'Absent'
+        AND das.summary_date = $2
+        ORDER BY u.name ASC;
+    `;
+    const { rows } = await db.query(query, [clientId, date]);
+    console.log(clientId, date);
+    return rows;
+}
 }
 
 module.exports = new AttendanceRepository();

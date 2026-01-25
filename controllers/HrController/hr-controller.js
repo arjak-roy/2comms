@@ -42,12 +42,13 @@ exports.regularizeAttendance = async (req, res) => {
 // HR can convert missing attendance to LOP or adjust against leave 
 exports.manageAbsence = async (req, res) => {
     try {
+        console.log(req.body);
         const { attendanceId, action, employeeId } = req.body; // action: 'LOP', 'LEAVE_ADJUST'
-        const clientId = req.user.client_id;
 
         const result = await attendanceRepo.processAbsence(attendanceId, employeeId, action);
         res.status(200).json({ success: true, data: result });
     } catch (error) {
+        console.log(error);
         res.status(500).json({ success: false, error: error.message });
     }
 };
@@ -144,6 +145,27 @@ exports.getEmployees = async (req, res) => {
         const clientId = req.user.client_id;
         const employees = await userRepo.getEmployeesByClient(clientId);
         res.status(200).json({ success: true, data: employees });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// controllers/HrController/hr-controller.js
+exports.getAbsentees = async (req, res) => {
+    try {
+        const clientId = req.user.client_id;
+        // Use provided date or default to yesterday since today's absences 
+        // are typically marked by the 5 AM cron job for the previous day.
+        const targetDate = req.query.date || new Date(Date.now()).toISOString().split('T')[0];
+
+        const absentees = await attendanceRepo.getAbsentEmployees(clientId, targetDate);
+        
+        res.status(200).json({ 
+            success: true, 
+            date: targetDate,
+            count: absentees.length,
+            data: absentees 
+        });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

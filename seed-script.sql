@@ -70,3 +70,42 @@ INSERT INTO rosters (employee_id, client_id, shift_id, roster_date) VALUES (5, 1
 -- Mapping Charlie and Diana to Night Shift
 INSERT INTO rosters (employee_id, client_id, shift_id, roster_date) VALUES (9, 1, 2, '2026-01-22');
 INSERT INTO rosters (employee_id, client_id, shift_id, roster_date) VALUES (10, 1, 2, '2026-01-22');
+
+
+
+
+
+-- Comprehensive 2026 Indian Holiday List
+INSERT INTO public.holiday_calendars (client_id, branch_id, holiday_date, name, is_flexi, year)
+VALUES 
+    -- 🇮🇳 Three Mandatory National Holidays
+    (1, NULL, '2026-01-26', 'Republic Day', false, 2026),
+    (1, NULL, '2026-08-15', 'Independence Day', false, 2026),
+    (1, NULL, '2026-10-02', 'Gandhi Jayanti', false, 2026),
+
+    -- 🗓️ Major Gazetted/Festival Holidays
+    (1, NULL, '2026-01-01', 'New Year''s Day', false, 2026),
+    (1, NULL, '2026-01-30', 'Id-ul-Fitr (Ramadan Eid)', false, 2026),
+    (1, NULL, '2026-03-04', 'Holi', false, 2026),
+    (1, NULL, '2026-03-27', 'Ram Navami', false, 2026),
+    (1, NULL, '2026-04-02', 'Mahavir Jayanti', false, 2026),
+    (1, NULL, '2026-04-03', 'Good Friday', false, 2026),
+    (1, NULL, '2026-04-08', 'Id-ul-Zuha (Bakrid)', false, 2026),
+    (1, NULL, '2026-05-01', 'May Day / Labour Day', false, 2026),
+    (1, NULL, '2026-05-01', 'Budh Purnima', false, 2026),
+    (1, NULL, '2026-07-07', 'Muharram', false, 2026),
+    (1, NULL, '2026-08-26', 'Janmashtami', false, 2026),
+    (1, NULL, '2026-09-05', 'Milad-un-Nabi', false, 2026),
+    (1, NULL, '2026-10-20', 'Dussehra (Mahanavami)', false, 2026),
+    (1, NULL, '2026-10-21', 'Vijaya Dashami', false, 2026),
+    (1, NULL, '2026-11-08', 'Diwali (Deepavali)', false, 2026),
+    (1, NULL, '2026-11-24', 'Guru Nanak Jayanti', false, 2026),
+    (1, NULL, '2026-12-25', 'Christmas Day', false, 2026),
+
+    -- 📍 Branch Specific (Example: Karnataka)
+    (1, 1, '2026-01-14', 'Makar Sankranti / Pongal', false, 2026),
+    (1, 1, '2026-11-01', 'Kannada Rajyotsava', false, 2026),
+
+    -- 🧘 Flexi/Restricted Holiday Examples
+    (1, NULL, '2026-02-15', 'Maha Shivaratri', true, 2026),
+    (1, NULL, '2026-04-14', 'Ambedkar Jayanti', true, 2026);

@@ -1,21 +1,32 @@
-const db = require('../config/db-config'); //
-const calculateInterval = require('../utils/calculate-intervals'); //
+const db = require('../config/db-config'); 
+const calculateInterval = require('../utils/calculate-intervals'); 
 
 /**
- * Manually reconciles attendance for a specific date
+ * Manually reconciles attendance for specific dates with Holiday/Week-off awareness
  * @param {string} dateString - Format 'YYYY-MM-DD'
  */
 async function reconcileDate(dateString) {
     console.log(`--- Reconciling: ${dateString} ---`);
-    const client = await db.db_client.connect(); //
+    const client = await db.db_client.connect(); 
 
     try {
+        const targetDate = new Date(dateString);
+        // Get day name for week-off check (e.g., 'Sunday')
+        const dayName = targetDate.toLocaleDateString('en-US', { weekday: 'long' });
+
         await client.query('BEGIN');
 
         // 1. Fetch scheduled employees for this specific date
         const rosterQuery = `
-            SELECT r.employee_id, r.client_id, s.start_time, s.grace_period_mins,
-                   b.allow_branch_overrides, b.branch_rules->>'grace_period' as branch_grace
+            SELECT 
+                r.employee_id, 
+                r.client_id, 
+                u.branch_id,
+                s.start_time, 
+                s.grace_period_mins,
+                s.weekly_offs->>'data', 
+                b.allow_branch_overrides,
+                b.branch_rules->>'grace_period' as branch_grace
             FROM rosters r
             JOIN shifts s ON r.shift_id = s.id
             JOIN users u ON r.employee_id = u.id
@@ -51,6 +62,22 @@ async function reconcileDate(dateString) {
                     if (punchTime > addMinutes(emp.start_time, grace)) {
                         is_late = true;
                     }
+                }
+            } else {
+                // --- NEW: HOLIDAY & WEEK-OFF CHECK FOR MANUAL PROCESSOR ---
+                // Check for public holidays
+                const holidayCheck = await client.query(
+                    `SELECT id FROM holiday_calendars 
+                     WHERE holiday_date = $1 AND (client_id = $2 OR branch_id = $3)`,
+                    [dateString, emp.client_id, emp.branch_id]
+                );
+
+                if (holidayCheck.rows.length > 0) {
+                    status = 'Holiday';
+                } 
+                // Check if the day is a configured weekly off in the shift
+                else if (emp.weekly_offs && emp.weekly_offs.includes(dayName)) {
+                    status = 'Holiday'; 
                 }
             }
 

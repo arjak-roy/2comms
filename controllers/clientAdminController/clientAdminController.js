@@ -1,7 +1,8 @@
 const clientRepo = require('../../repositories/clientRepository');
 const userRepo = require('../../repositories/userRepository');
 const bcrypt = require('bcryptjs');
-
+const shiftRepo = require('../../repositories/shiftsRepository');
+const rosterRepo = require('../../repositories/rosterRepository');
 
 // Add a physical location to a Client
 exports.createBranch = async (req, res) => {
@@ -138,16 +139,98 @@ exports.getAllBranches = async (req, res) => {
         res.status(500).json({ success: false, error: error.message });
     }
 };
+// --- SHIFT MANAGEMENT ---
 
-// //Approval Configuration
-// exports.configureApprovalFlow = async (req, res) => {
-//     try {
-//         const { requestType, levelsRequired } = req.body; // e.g., 'Leave', 2
-//         const clientId = req.user.clientId;
+/**
+ * Define a new shift (e.g., Night Shift, 9-to-5)
+ * Includes Grace Period and Weekly Offs
+ */
+exports.createShift = async (req, res) => {
+    try {
+        const { name, start_time, end_time, grace_period_mins, weekly_offs, late_coming_rules } = req.body;
+        const clientId = req.user.client_id;
 
-//         const config = await clientRepo.updateApprovalConfig(clientId, requestType, levelsRequired);
-//         res.status(200).json({ success: true, data: config });
-//     } catch (error) {
-//         res.status(500).json({ success: false, error: error.message });
-//     }
-// };
+        const newShift = await shiftRepo.createShift({
+            client_id: clientId,
+            name,
+            start_time,
+            end_time,
+            grace_period_mins,
+            weekly_offs, // Expected as Array: ["Saturday", "Sunday"]
+            late_coming_rules // JSON logic for penalties
+        });
+
+        res.status(201).json({ success: true, data: newShift });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * Update shift timings or rules (like changing grace period)
+ */
+exports.updateShift = async (req, res) => {
+    try {
+        const { shiftId } = req.params;
+        const clientId = req.user.client_id;
+
+        const updatedShift = await shiftRepo.updateShift(shiftId, clientId, req.body);
+        
+        if (!updatedShift) {
+            return res.status(404).json({ success: false, message: "Shift not found or unauthorized" });
+        }
+
+        res.status(200).json({ success: true, data: updatedShift });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+exports.getShifts = async (req, res) => {
+    try {
+        const shifts = await shiftRepo.getShiftsByClient(req.user.client_id);
+        res.status(200).json({ success: true, data: shifts });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+// --- ROSTER MANAGEMENT ---
+
+/**
+ * Assign employees to shifts and locations for specific dates.
+ * Supports bulk scheduling (e.g., scheduling a whole team for the next week).
+ */
+exports.setRoster = async (req, res) => {
+    try {
+        const { rosters } = req.body; // Expects Array of [{employee_id, shift_id, roster_date, location_id, is_wfh}]
+        const clientId = req.user.client_id;
+
+        if (!Array.isArray(rosters) || rosters.length === 0) {
+            return res.status(400).json({ success: false, message: "Roster data must be a non-empty array" });
+        }
+
+        const assignedRosters = await rosterRepo.setBulkRoster(clientId, rosters);
+
+        res.status(200).json({ 
+            success: true, 
+            message: `Successfully scheduled ${assignedRosters.length} roster entries`,
+            data: assignedRosters 
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
+
+/**
+ * Remove an employee from a roster date (e.g., if they are being moved to a different site)
+ */
+exports.deleteRosterEntry = async (req, res) => {
+    try {
+        const { employeeId, date } = req.query;
+        await rosterRepo.deleteRoster(employeeId, date);
+        res.status(200).json({ success: true, message: "Roster entry removed" });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+};

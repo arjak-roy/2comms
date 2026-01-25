@@ -37,5 +37,7 @@ router.post('/approvals/reminders', auth, hrAndAdmin, hrController.sendApprovalR
 
 //9. Get Employees by Client
 router.get('/employees', auth, hrAndAdmin, hrController.getEmployees);
-
+//10. routes/hr-routes.js
+// Access restricted to HR and Admins
+router.get('/attendance/absentees', auth, hrAndAdmin, hrController.getAbsentees);
 module.exports = router;
