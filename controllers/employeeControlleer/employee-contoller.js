@@ -26,7 +26,7 @@ exports.raiseRequest = async (req, res) => {
         const { type, details } = req.body; // type: 'Leave', 'Swipe', etc.
         const userId = req.user.id;
         const clientId = req.user.client_id;
-
+        console.log(req.body);
         const request = await approvalRepo.createRequest(clientId, userId, { type, details });
         res.status(201).json({ success: true, data: request });
     } catch (error) {
@@ -42,15 +42,15 @@ exports.getMyAttendance = async (req, res) => {
 
         const history = await attendanceRepo.getEmployeeHistory(userId, month, year);
         res.status(200).json({ success: true, data: history });
-    } catch (error) {
+    } catch (error) {   
         res.status(500).json({ success: false, error: error.message });
     }
 };
 
 exports.getMyRequests = async (req, res) => {
     try {
-        const client_id = req.user.client_id;
-        const requests = await approvalRepo.getRequestsByClient(client_id, { requesterId: req.user.id });
+        const id = req.user.id;
+        const requests = await approvalRepo.getRequests(id);
         res.status(200).json({ success: true, data: requests });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

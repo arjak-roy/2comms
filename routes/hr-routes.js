@@ -27,7 +27,7 @@ router.post('/cycle/finalize', auth, hrAndAdmin, hrController.finalizeCycle);
 router.post('/reports', auth, hrAndAdmin, hrController.getReports);
 
 // 6. Manage Pending Approvals (List view)
-router.get('/approvals/pending', auth, hrAndAdmin, hrController.getPendingApprovals);
+router.get('/approvals/pending', auth, authorize(['Admin', 'HR','Manager']), hrController.getPendingApprovals);
 
 // 7. Take Action on Request (Approve/Reject)
 router.post('/approvals/action', auth, hrAndAdmin, hrController.actionApprovalRequest);

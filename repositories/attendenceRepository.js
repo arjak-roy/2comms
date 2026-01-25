@@ -19,9 +19,9 @@ class AttendanceRepository {
 
     // Daily snapshot for managers (1 hour after shift start) [cite: 29, 30]
 async getDailySnapshot(clientId, date) {
-    // We use a LEFT JOIN on branches to access the 'allow_branch_overrides' and 'branch_rules'
     const query = `
-        SELECT 
+        SELECT DISTINCT ON (u.id)
+            u.id,
             u.name, 
             u.designation, 
             ap.location_type, 
@@ -47,15 +47,16 @@ async getDailySnapshot(clientId, date) {
         JOIN shifts s ON r.shift_id = s.id
         WHERE u.client_id = $1 
         AND ap.punch_type = 'IN' 
-        AND DATE(ap.punch_time) = ${date? `$2` : `CURRENT_DATE`};
+        AND DATE(ap.punch_time) = $2
+        -- Order by id and time to ensure DISTINCT ON (u.id) picks the FIRST punch of the day
+        ORDER BY u.id, ap.punch_time ASC;
     `;
     
     // Safety: Ensure date defaults to today if not provided to avoid SQL errors
     const queryDate = date || new Date().toISOString().split('T')[0];
     const { rows } = await db.query(query, [clientId, queryDate]);
     return rows;
-}
-    // HR Regularization: Manual status override [cite: 33, 37, 43]
+}    // HR Regularization: Manual status override [cite: 33, 37, 43]
     async updateAttendance(clientId, employeeId, data) {
         try {
             const { date, status, total_hours, is_late } = data;
@@ -253,37 +254,41 @@ async generateReport(clientId, filters) {
      * Used by the Flutter app to display "Shift: 9:00 AM - 6:00 PM" and for Geofencing
      */
     async getTodayRoster(employeeId) {
-        const query = `
-            SELECT 
-                r.roster_date, 
-                r.is_wfh,
-                s.name as shift_name,
-                s.start_time, 
-                s.end_time, 
-                s.grace_period_mins,
-                b.name as branch_name,
-                b.latitude, 
-                b.longitude, 
-                b.radius_meters
-            FROM rosters r
-            JOIN shifts s ON r.shift_id = s.id
-            JOIN users u ON r.employee_id = u.id
-            LEFT JOIN branches b ON u.branch_id = b.id
-            WHERE r.employee_id = $1 
-            AND r.roster_date = CURRENT_DATE;
-        `;
-
-        const { rows } = await db.query(query, [employeeId]);
-        return rows[0] || null;
-    }
+try {
+            const query = `
+                SELECT 
+                    r.roster_date, 
+                    r.is_wfh,
+                    s.name as shift_name,
+                    s.start_time, 
+                    s.end_time, 
+                    s.grace_period_mins,
+                    b.name as branch_name,
+                    b.latitude, 
+                    b.longitude, 
+                    b.radius_meters
+                FROM rosters r
+                JOIN shifts s ON r.shift_id = s.id
+                JOIN users u ON r.employee_id = u.id
+                LEFT JOIN branches b ON u.branch_id = b.id
+                WHERE r.employee_id = $1 
+                AND r.roster_date = '2026-01-25' ;
+            `;
+    
+            const { rows } = await db.query(query, [employeeId]);
+            return rows[0] || null;
+    
+} catch (error) {
+    throw error;
+}    }
     async getDailySnapshotByManager(managerId, date) {
         const query = `
         SELECT u.name, u.designation, ap.punch_time, ap.punch_type
         FROM users u
-        LEFT JOIN attendance_punches ap ON u.id = ap.employee_id AND ap.punch_time::date = $2
+        LEFT JOIN attendance_punches ap ON u.id = ap.employee_id AND ap.punch_time::date = ${date !== null ?'$2' : 'CURRENT_DATE'}
         WHERE u.manager_id = $1
     `;
-        const { rows } = await db.query(query, [managerId, date || 'CURRENT_DATE']);
+        const { rows } = await db.query(query, [managerId, date]);
         return rows;
     }
 }

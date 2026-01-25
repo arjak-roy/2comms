@@ -68,52 +68,70 @@ class ApprovalRepository {
         `;
         return await db.query(query);
     }
-
-    async getRequestsByClient(clientId, filters = {}) {
-        const { status, requesterId, type, minLevel, isManager } = filters;
-
-        let queryParams = [clientId];
-        let filterSQL = "";
-
-        if (status) {
-            queryParams.push(status);
-            filterSQL += ` AND ar.status = $${queryParams.length}`;
+    async getRequests(RequesterID) {
+        try{
+            const query = `
+                SELECT 
+                    ar.*, 
+                    u.name as requester_name, 
+                    u.email as requester_email
+                FROM approval_requests ar
+                JOIN users u ON ar.requester_id = u.id
+                WHERE ar.requester_id = $1;
+            `;
+            const { rows } = await db.query(query, [RequesterID]);
+            return rows;
+        } catch (e) {
+            throw e;
         }
-        if (requesterId) {
-            queryParams.push(requesterId);
-            filterSQL += ` AND ar.requester_id = $${queryParams.length}`;
-        }
-        if (type) {
-            queryParams.push(type);
-            filterSQL += ` AND ar.type = $${queryParams.length}`;
-        }
-        if (isManager) {
-            queryParams.push(minLevel);
-            filterSQL += ` AND ar.current_level = $${queryParams.length}`;
-        }
-        if (!isManager) {
-            queryParams.push(minLevel);
-            filterSQL += ` AND ar.current_level >= $${queryParams.length}`;
-        }
+    }
+async getRequestsByClient(clientId, filters = {}) {
+    const { status, requesterId, type, minLevel, isManager } = filters;
 
-        const query = `
-            SELECT 
-                ar.*, 
-                u.name as requester_name, 
-                u.email as requester_email,
-                b.name as branch_name
-            FROM approval_requests ar
-            JOIN users u ON ar.requester_id = u.id
-            LEFT JOIN branches b ON u.branch_id = b.id
-            WHERE ar.client_id = $1 ${filterSQL}
-            ORDER BY ar.created_at DESC;
-        `;
+    let queryParams = [clientId];
+    let filterSQL = "";
 
-        const { rows } = await db.query(query, queryParams);
-        return rows;
+    if (status) {
+        queryParams.push(status);
+        filterSQL += ` AND ar.status = $${queryParams.length}`;
+    }
+    if (requesterId) {
+        queryParams.push(requesterId);
+        filterSQL += ` AND ar.requester_id = $${queryParams.length}`;
+    }
+    if (type) {
+        queryParams.push(type);
+        filterSQL += ` AND ar.type = $${queryParams.length}`;
     }
 
-    /**
+    // UPDATED LOGIC FOR LEVEL FILTERING
+    if (isManager) {
+        // Managers (L1) only see requests exactly at their level
+        queryParams.push(minLevel);
+        filterSQL += ` AND ar.current_level = $${queryParams.length}`;
+    } else {
+        // HR/Admin see everything from minLevel (2) up to the project max (3)
+        // This ensures they don't see Level 1 requests meant for managers
+        queryParams.push(minLevel || 2); // Default to Level 2 for HR if not specified
+        filterSQL += ` AND ar.current_level >= $${queryParams.length} AND ar.current_level <= 3`;
+    }
+
+    const query = `
+        SELECT 
+            ar.*, 
+            u.name as requester_name, 
+            u.email as requester_email,
+            b.name as branch_name
+        FROM approval_requests ar
+        JOIN users u ON ar.requester_id = u.id
+        LEFT JOIN branches b ON u.branch_id = b.id
+        WHERE ar.client_id = $1 ${filterSQL}
+        ORDER BY ar.created_at DESC;
+    `;
+
+    const { rows } = await db.query(query, queryParams);
+    return rows;
+}    /**
      * Identify requests approaching SLA deadline and notify approvers
      * Logic: Finds 'Pending' requests where SLA expires in less than 24 hours
      */

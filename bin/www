@@ -8,7 +8,7 @@ var app = require('../app');
 var debug = require('debug')('2comms:server');
 var http = require('http');
 var {db_client} = require('../config/db-config');
-
+require('../cron/attendence-processor'); // <--- ADD THIS LINE
 /**
  * Get port from environment and store in Express.
  */

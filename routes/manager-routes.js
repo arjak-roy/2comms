@@ -7,7 +7,7 @@ const authorize = require('../middlewares/auth/role-auth');
 // Managers and Admins can access these
 const managerAccess = authorize(['Admin', 'HR', 'Manager']);
 
-router.get('/team-presence', auth, managerAccess, managerCtrl.getTeamPresence);
+router.post('/team-presence', auth, managerAccess, managerCtrl.getTeamPresence);
 router.post('/request/action', auth, managerAccess, managerCtrl.actionTeamRequest);
 
 module.exports = router;
