@@ -272,7 +272,7 @@ try {
                 JOIN users u ON r.employee_id = u.id
                 LEFT JOIN branches b ON u.branch_id = b.id
                 WHERE r.employee_id = $1 
-                AND r.roster_date = '2026-01-25' ;
+                AND r.roster_date = '${new Date().toISOString().split('T')[0]}' ;
             `;
     
             const { rows } = await db.query(query, [employeeId]);
