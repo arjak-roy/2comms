@@ -26,49 +26,56 @@ The PostgreSQL schema is optimized for both transactional integrity and flexible
 To eliminate manual tracking, the system uses a **Materialized Absence** strategy:
 1.  **Automation:** A `node-cron` job executes daily at 5:00 AM. It performs a `LEFT JOIN` between the expected `rosters` and actual `attendance_punches`.
 2.  **Absence Generation:** If an employee has a roster but zero punches, the system explicitly inserts an `Absent` record into the `daily_attendance_summary`.
-3.  **Holiday Awareness:** The engine cross-references the `holiday_calendars` and `weekly_offs` (from the shift JSON) before flagging an absence.
+3.  **Holiday Awareness:** The engine cross-references the `holiday_calendars` and `weekly_offs` before flagging an absence.
 
 
 
 ### Server-Side Geofencing
 To prevent "proxy attendance," the backend does not trust the mobile device's location status alone.
-* **Haversine Formula:** Upon every `/punch` request, the backend retrieves the branch coordinates and recalculates the distance between the employee and the branch.
-* **Validation:** Access is only granted if the calculated distance is within the defined `radius_meters`.
-
-
+* **Haversine Formula:** Upon every `/punch` request, the backend retrieves the branch coordinates and recalculates the distance. Access is granted only if the distance is within the defined `radius_meters`.
 
 ---
 
-## 🛣️ API Documentation Snapshot
+## 🛣️ API Documentation
 
-### **1. Authentication**
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/api/auth/login` | `POST` | Tenant-aware login; returns JWT and user metadata. |
-| `/api/auth/me` | `GET` | Validates current session and returns user profile. |
+### **1. Authentication (Auth Routes)**
+| Endpoint | Method | Request Body | Success Response (200 OK) |
+| :--- | :--- | :--- | :--- |
+| `/api/auth/login` | `POST` | `{ "email", "password" }` | `{ "token", "user": { "id", "role", "client_id", "name" } }` |
+| `/api/auth/logout` | `POST` | None (Header Token) | `{ "success": true, "message": "Logged out" }` |
+| `/api/auth/me` | `GET` | None (Header Token) | `{ "isAuthenticated": true, "user": { "id", "name", "role" } }` |
 
-### **2. Employee Portal (Flutter Integration)**
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/employee/today-roster` | `GET` | Fetches geofence coordinates, branch info, and shift timings. |
-| `/employee/punch` | `POST` | Records attendance with GPS and selfie verification. |
-| `/employee/request` | `POST` | Initiates Leave or Swipe (Regularization) requests. |
+### **2. Employee Portal (Mobile Integration)**
+| Endpoint | Method | Request Body | Key Output Data |
+| :--- | :--- | :--- | :--- |
+| `/punch` | `POST` | `{ "type", "lat", "lng", "selfieUrl" }` | `{ "punchTime", "isLate": bool }` |
+| `/today-roster` | `GET` | None | `{ "shiftStart", "shiftEnd", "lat", "lng", "radius" }` |
+| `/my-history` | `GET` | None | `Array of [{ "date", "status", "totalHours" }]` |
+| `/request` | `POST` | `{ "type", "details": { "start_date", "end_dae", "reason" } }` | `{ "requestId", "status": "Pending" }` |
+| `/my-requests` | `GET` | None | `Array of [{ "type", "status", "appliedOn" }]` |
 
-### **3. Management & Operations (React Console)**
-| Endpoint | Method | Description |
-| :--- | :--- | :--- |
-| `/hr/request/action` | `POST` | Processes L1/L2 approvals for managers and HR. |
-| `/hr/cycle/finalize` | `POST` | Freezes data for the payroll cycle to prevent backdated edits. |
+### **3. HR & Management Operations**
+| Endpoint | Method | Request Body | Key Output Data |
+| :--- | :--- | :--- | :--- |
+| `/attendance/snapshot` | `POST` | None | `{ "presentCount", "absentCount", "lateCount", "halfDayCount", "leaveCount" }` |
+| `/attendance/absentees` | `GET` | None | `Array of [{ "name", "designation", "punch_time", "punch_type" }]` |
+| `/request/action` | `POST` | `{ "requestId", "action", "comments" }` | `{ "success": true, "data": { "id", "status", "updated_at" } }` |
 
 
+
+### **4. Super Admin Operations**
+| Endpoint | Method | Request Body | Key Output Data |
+| :--- | :--- | :--- | :--- |
+| `/api/clients` | `POST` | `{ "name", "domain", "ot_config" }` | `{ "clientId", "message": "Tenant created" }` |
+| `/api/createUsers` | `POST` | `{ "name", "email", "role", "client_id" }` | `{ "userId", "message": "User created" }` |
 
 ---
 
 ## 🛠️ Notable Challenges & Solutions
 
-* **Atomic Leave Deductions:** Used **SQL Transactions** (`BEGIN/COMMIT`) to ensure that approving a leave request and deducting the balance happen as a single, unbreakable operation.
+* **Atomic Leave Deductions:** Used **SQL Transactions** (`BEGIN/COMMIT`) and conditional updates to ensure balances never drop below zero during concurrent approvals.
 * **Lateness Precision:** Solved timezone/type mismatches by explicitly casting `punch_time::time` against `shift_start + grace_period` in the repository layer.
-* **Multi-Level Approvals:** Implemented a state-aware approval chain that tracks `current_level` in the `approval_requests` table to support hierarchical authorization.
+* **Dynamic Routing:** Implemented a state-aware approval chain that tracks `current_level` in the `approval_requests` table to support hierarchical authorization (Manager -> HR).
 
 ---
 
@@ -76,8 +83,7 @@ To prevent "proxy attendance," the backend does not trust the mobile device's lo
 1.  **Clone:** `git clone <repo-url>`
 2.  **Install:** `npm install`
 3.  **Environment:** Configure `.env` with `DATABASE_URL`, `PORT`, and `JWT_SECRET`.
-4.  **Database:** Initialize the schema using the SQL provided in `/database/schema.sql`.
-5.  **Run:** `npm start` (The Cron Job initializes automatically on startup).
+4.  **Run:** `npm start` (The Cron Job initializes automatically on startup).
 
 ---
 **Project developed as a part of an internship assessment.**
