@@ -1,22 +1,20 @@
-# Multi-Tenant HRMS Backend (Attendance & Payroll)
+# 🏢 Multi-Tenant HRMS (Attendance & Payroll)
 
-An enterprise-grade, multi-tenant Human Resource Management System (HRMS) focused on automated attendance tracking and payroll preparation. Built with **Node.js**, **Express**, and **PostgreSQL**, this backend serves as the core engine for both a Flutter mobile application and a React-based administrative dashboard.
+An enterprise-grade, multi-tenant Human Resource Management System (HRMS) core designed for automated attendance reconciliation and payroll readiness. Built with **Node.js**, **Express**, and **PostgreSQL**, this backend acts as the secure engine for a Geofenced **Flutter** mobile app and a **React** administrative console.
 
 ## 🚀 Key Technical Features
 
-### 1. Robust Authorization & Security
-The system implements a dual-layer security model to ensure data isolation in a multi-tenant environment:
-* **Authentication Middleware (`auth-middleware.js`):** Intercepts requests to validate JSON Web Tokens (JWT). It extracts the `user_id`, `role`, and `client_id` to populate the `req.user` object.
-* **Role-Based Access Control (RBAC) (`role-auth.js`):** A sophisticated middleware that prevents unauthorized access by checking the authenticated user's role against an allowed list (e.g., `['Admin', 'HR']`).
+### 1. Robust Authorization & Multi-Tenant Security
+The system implements a rigorous data isolation model to ensure Tenant A can never access Tenant B’s records:
+* **Layered Middleware:** Uses `auth-middleware.js` for JWT validation and `role-auth.js` for RBAC (Role-Based Access Control) across Super Admin, Admin, HR, and Employee levels.
+* **Tenant-Scoped Repositories:** Every SQL query in the repository layer is explicitly scoped with a `client_id` extracted from the authenticated JWT.
 
 
 
-### 2. Multi-Tenant Database Schema
-Designed for strict data isolation, every table (except Super Admin tables) contains a `client_id` foreign key.
-* **`users`**: Manages hierarchies using `manager_id`.
-* **`attendance_punches`**: Stores raw GPS-verified logs, selfie URLs, and punch types (IN/OUT).
-* **`daily_attendance_summary`**: The primary source for payroll, storing aggregated daily hours and status.
-* **`leave_balances`**: Manages Paid, Sick, and Casual leave ledgers.
+### 2. High-Performance Schema Design
+The PostgreSQL schema is optimized for both transactional integrity and flexible policy management:
+* **JSONB Policies:** Shift rules, weekly offs, and overtime configurations are stored as `JSONB` to allow dynamic rule updates without schema migrations.
+* **Roster-Punch Mapping:** A sophisticated relational link between `rosters`, `shifts`, and `attendance_punches` drives the reconciliation logic.
 
 
 
@@ -24,62 +22,62 @@ Designed for strict data isolation, every table (except Super Admin tables) cont
 
 ## 📊 Business Logic & Algorithms
 
-### The "Total Days" & Absence Logic
-Unlike basic systems, this backend does not calculate absence "on-the-fly." It uses a **Materialized Absence** strategy:
-1.  **Nightly Cron Job:** A script runs daily at 00:05 AM. It performs a `LEFT JOIN` between the employee roster and the actual punches.
-2.  **Absence Generation:** If an employee was supposed to work but has zero punches, the system explicitly inserts a row into `daily_attendance_summary` with the status `Absent`.
-3.  **Regularization:** This physical record allows HR to later "Regularize" the day (converting an Absence to a 'Paid Leave' or 'Present') via the `processAbsence` logic.
+### Nightly Reconciliation Engine (The "5 AM Cron")
+To eliminate manual tracking, the system uses a **Materialized Absence** strategy:
+1.  **Automation:** A `node-cron` job executes daily at 5:00 AM. It performs a `LEFT JOIN` between the expected `rosters` and actual `attendance_punches`.
+2.  **Absence Generation:** If an employee has a roster but zero punches, the system explicitly inserts an `Absent` record into the `daily_attendance_summary`.
+3.  **Holiday Awareness:** The engine cross-references the `holiday_calendars` and `weekly_offs` (from the shift JSON) before flagging an absence.
 
-### Punctuality Detection
-The system identifies latecomers by casting the punch timestamp to a time object and comparing it against the shift start time:
-`is_late = punch_time::time > (shift_start + grace_period)`
+
+
+### Server-Side Geofencing
+To prevent "proxy attendance," the backend does not trust the mobile device's location status alone.
+* **Haversine Formula:** Upon every `/punch` request, the backend retrieves the branch coordinates and recalculates the distance between the employee and the branch.
+* **Validation:** Access is only granted if the calculated distance is within the defined `radius_meters`.
 
 
 
 ---
 
-## 🛣️ API Documentation
+## 🛣️ API Documentation Snapshot
 
-### **Authentication**
-* `POST /api/auth/login` - Tenant-aware authentication.
-* `POST /api/auth/logout` - Secure session termination.
+### **1. Authentication**
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/api/auth/login` | `POST` | Tenant-aware login; returns JWT and user metadata. |
+| `/api/auth/me` | `GET` | Validates current session and returns user profile. |
 
-### **Employee Portal**
-* `POST /api/employee/punch` - Records attendance with Geofencing verification.
-* `GET /api/employee/my-history` - Fetches data for the mobile calendar view.
-* `POST /api/employee/request` - Initiates Leave or Swipe regularization requests.
+### **2. Employee Portal (Flutter Integration)**
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/employee/today-roster` | `GET` | Fetches geofence coordinates, branch info, and shift timings. |
+| `/employee/punch` | `POST` | Records attendance with GPS and selfie verification. |
+| `/employee/request` | `POST` | Initiates Leave or Swipe (Regularization) requests. |
 
-### **Management & Operations**
-* `POST /api/hr/attendance/manage-absence` - Deducts from `leave_balances` or marks LOP.
-* `POST /api/hr/cycle/finalize` - Freezes attendance data for the payroll cycle.
-* `GET /api/hr/reports` - Generates CSV-ready monthly attendance data.
+### **3. Management & Operations (React Console)**
+| Endpoint | Method | Description |
+| :--- | :--- | :--- |
+| `/hr/request/action` | `POST` | Processes L1/L2 approvals for managers and HR. |
+| `/hr/cycle/finalize` | `POST` | Freezes data for the payroll cycle to prevent backdated edits. |
+
+
 
 ---
 
 ## 🛠️ Notable Challenges & Solutions
 
-### **Challenge: Timezone & Data Type Mismatches**
-**Problem:** PostgreSQL threw errors when comparing `Timestamp without timezone` (Punch) to `Time` (Shift Start).
-**Solution:** Implemented explicit casting (`::time`) in the repository layer to ensure precision in lateness calculation regardless of the date.
-
-### **Challenge: Atomic Leave Deductions**
-**Problem:** Concurrent approval requests could lead to negative leave balances.
-**Solution:** Utilized **SQL Transactions** (`BEGIN/COMMIT`) and conditional updates (`SET balance = balance - 1 WHERE balance >= 1`) to ensure atomic operations.
-
-
-
-### **Challenge: Geofencing Reliability**
-**Problem:** Relying only on the frontend for GPS verification is insecure.
-**Solution:** The backend re-calculates the distance between the employee and the branch using the **Haversine Formula** on every punch request.
+* **Atomic Leave Deductions:** Used **SQL Transactions** (`BEGIN/COMMIT`) to ensure that approving a leave request and deducting the balance happen as a single, unbreakable operation.
+* **Lateness Precision:** Solved timezone/type mismatches by explicitly casting `punch_time::time` against `shift_start + grace_period` in the repository layer.
+* **Multi-Level Approvals:** Implemented a state-aware approval chain that tracks `current_level` in the `approval_requests` table to support hierarchical authorization.
 
 ---
 
 ## 🏗️ Setup & Installation
 1.  **Clone:** `git clone <repo-url>`
 2.  **Install:** `npm install`
-3.  **Environment:** Configure `.env` with `DATABASE_URL` and `JWT_SECRET`.
-4.  **Database:** Execute the SQL scripts in `/database/schema.sql`.
-5.  **Run:** `npm start` (The Cron Job will initialize automatically).
+3.  **Environment:** Configure `.env` with `DATABASE_URL`, `PORT`, and `JWT_SECRET`.
+4.  **Database:** Initialize the schema using the SQL provided in `/database/schema.sql`.
+5.  **Run:** `npm start` (The Cron Job initializes automatically on startup).
 
 ---
-**Project developed as a part of an internship assesment.**
+**Project developed as a part of an internship assessment.**
