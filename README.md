@@ -86,4 +86,8 @@ To prevent "proxy attendance," the backend does not trust the mobile device's lo
 4.  **Run:** `npm start` (The Cron Job initializes automatically on startup).
 
 ---
+## Architecture:
+<img width="766" height="739" alt="backend" src="https://github.com/user-attachments/assets/2ed73a5f-55a5-43c5-b6e1-c6a8cde11a69" />
+
+---
 **Project developed as a part of an internship assessment.**
