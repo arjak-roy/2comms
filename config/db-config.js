@@ -12,6 +12,6 @@ const db_client = new Pool({
 
 // Centralized query method for easier logging
 module.exports = {
-    query: (text, params) => db_client.query(text, params),
+    query: (text, params) => {db_client.query(text, params);},
     db_client 
 };

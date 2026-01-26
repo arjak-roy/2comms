@@ -18,7 +18,7 @@ exports.login = async (req, res) => {
             return res.status(401).json({ message: "Invalid email or password" });
         }
 
-        const payload = { id: user.id, client_id: user.client_id, role: user.role };
+        const payload = { id: user.id, client_id: user.client_id, role: user.role, branch_id: user.branch_id };
         // 3. Generate the Token
     const token = jwt.sign(payload, process.env.JWT_SECRET, { expiresIn: '1d' });
 
