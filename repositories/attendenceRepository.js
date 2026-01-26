@@ -281,16 +281,24 @@ try {
 } catch (error) {
     throw error;
 }    }
-    async getDailySnapshotByManager(managerId, date) {
-        const query = `
-        SELECT u.name, u.designation, ap.punch_time, ap.punch_type
+async getDailySnapshotByManager(managerId, date) {
+    const query = `
+        SELECT 
+            u.name, 
+            u.designation, 
+            ap.punch_time, 
+            ap.punch_type
         FROM users u
-        LEFT JOIN attendance_punches ap ON u.id = ap.employee_id AND ap.punch_time::date = ${date !== null ?'$2' : 'CURRENT_DATE'}
+        LEFT JOIN attendance_punches ap 
+            ON u.id = ap.employee_id 
+            AND ap.punch_time::date = COALESCE($2::date, CURRENT_DATE)
         WHERE u.manager_id = $1
     `;
-        const { rows } = await db.query(query, [managerId, date]);
-        return rows;
-    }
+    
+    // If date is null, COALESCE will fall back to CURRENT_DATE
+    const { rows } = await db.query(query, [managerId, date]);
+    return rows;
+}
     // repositories/attendenceRepository.js
 async getAbsentEmployees(clientId, date) {
     const query = `
