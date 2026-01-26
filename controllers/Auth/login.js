@@ -26,9 +26,9 @@ exports.login = async (req, res) => {
     res.cookie('token', token, {
         httpOnly: true,     // Prevents JS access (Crucial!)
         secure: process.env.NODE_ENV === 'production', // Only over HTTPS
-        sameSite: 'None', // Prevents CSRF
+        sameSite: 'None',
         maxAge: 24 * 60 * 60 * 1000 // 1 day
-    });
+  });
 
     // Send in body for Flutter/Mobile
     res.json({
