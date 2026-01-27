@@ -70,7 +70,8 @@ To prevent "proxy attendance," the backend does not trust the mobile device's lo
 | `/api/createUsers` | `POST` | `{ "name", "email", "role", "client_id" }` | `{ "userId", "message": "User created" }` |
 
 ---
-
+* To run the attendence reconcilation (cron job) manually: `npm run reconcile [yyyy-mm-dd]`
+---
 ## 🛠️ Notable Challenges & Solutions
 
 * **Atomic Leave Deductions:** Used **SQL Transactions** (`BEGIN/COMMIT`) and conditional updates to ensure balances never drop below zero during concurrent approvals.
