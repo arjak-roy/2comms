@@ -156,7 +156,7 @@ exports.getAbsentees = async (req, res) => {
         const clientId = req.user.client_id;
         // Use provided date or default to yesterday since today's absences 
         // are typically marked by the 5 AM cron job for the previous day.
-        const targetDate = req.query.date || new Date(Date.now()).toISOString().split('T')[0];
+        const targetDate = req.query.date || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
         const absentees = await attendanceRepo.getAbsentEmployees(clientId, targetDate);
         
