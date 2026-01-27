@@ -83,7 +83,7 @@ To prevent "proxy attendance," the backend does not trust the mobile device's lo
 ## 🏗️ Setup & Installation
 1.  **Clone:** `git clone <repo-url>`
 2.  **Install:** `npm install`
-3.  **Environment:** Configure `.env` with `DATABASE_URL`, `PORT`, and `JWT_SECRET`.
+3.  **Environment:** Configure `.env` with `DATABASE_URL`, `PORT`, and `JWT_SECRET`, `NODE_ENV`
 4.  **Run:** `npm start` (The Cron Job initializes automatically on startup).
 
 ---
